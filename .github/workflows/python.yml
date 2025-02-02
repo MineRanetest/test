@@ -15,5 +15,5 @@ jobs:
         with:
           python_ver: '3.12'
           spec: 'python.py'
-          upload_exe_with_name: 'love_heart'
+          upload_exe_with_name: 'python'
           options: --onefile, --name "python", --windowed, 
