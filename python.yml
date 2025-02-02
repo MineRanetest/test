@@ -14,6 +14,6 @@ jobs:
         uses: sayyid5416/pyinstaller@v1
         with:
           python_ver: '3.12'
-          spec: ''
+          spec: 'python.py'
           upload_exe_with_name: 'love_heart'
           options: --onefile, --name "love_heart", --windowed, 
