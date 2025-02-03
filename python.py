@@ -1,60 +1,141 @@
-import os
-import sys
-import platform
+import tkinter as tk
+from tkinter import messagebox
 import subprocess
-import time
+import platform
 
-def get_shutdown_command(seconds):
-    """根据操作系统返回对应的关机命令"""
-    system = platform.system().lower()
-    
-    if system == 'windows':
-        return f'shutdown /s /t {seconds}'
-    elif system in ('linux', 'darwin'):  # darwin是macOS的内核名称
-        mins = max(seconds // 60, 1)     # 转换为至少1分钟
-        return f'shutdown -h +{mins}' if system == 'linux' else f'shutdown -h +{mins}'
-    else:
-        raise OSError("不支持的操作系统")
+class PrecisionShutdownApp:
+    def __init__(self, master):
+        self.master = master
+        master.title("精准关机程序")
+        master.geometry("350x220")
+        
+        # 系统检查
+        if platform.system() != "Windows":
+            messagebox.showerror("错误", "本程序仅支持Windows系统")
+            master.destroy()
+            return
 
-def main():
-    try:
-        # 获取关机延迟时间
-        delay = int(input("请输入关机延迟时间（秒）: "))
-        if delay < 0:
-            raise ValueError("时间不能为负数")
-            
-        # 获取关机命令
-        cmd = get_shutdown_command(delay)
-        
-        # 执行关机命令
-        if platform.system().lower() == 'windows':
-            subprocess.run(cmd, shell=True, check=True)
-        else:
-            subprocess.run(cmd.split(), check=True)
-            
-        print(f"系统将在{delay}秒后关机，若要取消可以按Ctrl+C！")
-        
+        # 初始化变量
+        self.shutdown_scheduled = False
+        self.remaining_seconds = 0
+
+        # 创建界面
+        self.create_widgets()
+
+    def create_widgets(self):
+        # 输入区
+        input_frame = tk.Frame(self.master)
+        input_frame.pack(pady=15)
+
+        tk.Label(input_frame, text="关机倒计时（秒）:").grid(row=0, column=0, padx=5)
+        self.entry = tk.Entry(input_frame, width=10)
+        self.entry.grid(row=0, column=1, padx=5)
+
+        # 按钮区
+        btn_frame = tk.Frame(self.master)
+        btn_frame.pack(pady=10)
+
+        self.start_btn = tk.Button(
+            btn_frame,
+            text="开始关机",
+            command=self.start_shutdown,
+            bg="#2196F3",
+            fg="white",
+            width=10
+        )
+        self.start_btn.pack(side=tk.LEFT, padx=5)
+
+        self.cancel_btn = tk.Button(
+            btn_frame,
+            text="取消关机",
+            command=self.cancel_shutdown,
+            bg="#FF5722",
+            fg="white",
+            state=tk.DISABLED,
+            width=10
+        )
+        self.cancel_btn.pack(side=tk.LEFT, padx=5)
+
         # 倒计时显示
-        while delay > 0:
-            mins, secs = divmod(delay, 60)
-            print(f"\r剩余时间: {mins:02d}:{secs:02d}", end="")
-            time.sleep(1)
-            delay -= 1
+        self.countdown_label = tk.Label(
+            self.master,
+            text="00:00:00",
+            font=("Arial", 24, "bold"),  # 修改为通用字体
+            fg="#4CAF50"
+        )
+        self.countdown_label.pack(pady=15)
+
+        # 状态提示
+        self.status_label = tk.Label(self.master, text="", fg="#666")
+        self.status_label.pack()
+
+    def start_shutdown(self):
+        # 输入验证
+        try:
+            seconds = int(self.entry.get())
+            if seconds <= 0:
+                raise ValueError
+        except ValueError:
+            messagebox.showerror("输入错误", "请输入有效的正整数")
+            self.entry.delete(0, tk.END)
+            return
+
+        # 执行关机命令
+        try:
+            subprocess.run(f"shutdown /s /t {seconds}", check=True, shell=True)
+            self.status_label.config(text="关机计划已设置", fg="#4CAF50")
+        except subprocess.CalledProcessError:
+            messagebox.showerror("权限错误", "请右键以管理员身份运行本程序")
+            return
+
+        # 初始化倒计时
+        self.shutdown_scheduled = True
+        self.remaining_seconds = seconds
+        self.toggle_buttons()
+        self.update_countdown()
+
+    def cancel_shutdown(self):
+        try:
+            subprocess.run("shutdown /a", check=True, shell=True)
+            self.status_label.config(text="关机已取消", fg="#FF5722")
+            self.shutdown_scheduled = False
+            self.countdown_label.config(text="00:00:00")
+            self.toggle_buttons()
+        except subprocess.CalledProcessError:
+            messagebox.showerror("错误", "取消关机失败")
+
+    def update_countdown(self):
+        if self.shutdown_scheduled and self.remaining_seconds > 0:
+            # 转换为时:分:秒
+            hours = self.remaining_seconds // 3600
+            minutes = (self.remaining_seconds % 3600) // 60
+            seconds = self.remaining_seconds % 60
+            time_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+            self.countdown_label.config(text=time_str)
             
-    except ValueError as e:
-        print(f"错误: {e}，请输入有效的正整数")
-        sys.exit(1)
-    except subprocess.CalledProcessError:
-        print("关机命令执行失败，请尝试用管理员/root权限运行")
-        sys.exit(1)
-    except KeyboardInterrupt:
-        print("\n关机已取消")
-        # 取消Windows关机计划
-        if platform.system().lower() == 'windows':
-            subprocess.run('shutdown /a', shell=True)
-    except Exception as e:
-        print(f"发生未知错误: {str(e)}")
-        sys.exit(1)
+            self.remaining_seconds -= 1
+            self.master.after(1000, self.update_countdown)
+        elif self.shutdown_scheduled:
+            self.countdown_label.config(text="00:00:00")
+
+    def toggle_buttons(self):
+        # 修正后的状态切换逻辑
+        if self.shutdown_scheduled:
+            self.start_btn.config(state=tk.DISABLED)
+            self.cancel_btn.config(state=tk.NORMAL)
+            self.entry.config(state=tk.DISABLED)
+        else:
+            self.start_btn.config(state=tk.NORMAL)
+            self.cancel_btn.config(state=tk.DISABLED)
+            self.entry.config(state=tk.NORMAL)
+
+    def on_closing(self):
+        if self.shutdown_scheduled:
+            self.cancel_shutdown()
+        self.master.destroy()
 
 if __name__ == "__main__":
-    main()
+    root = tk.Tk()
+    app = PrecisionShutdownApp(root)
+    root.protocol("WM_DELETE_WINDOW", app.on_closing)
+    root.mainloop()
